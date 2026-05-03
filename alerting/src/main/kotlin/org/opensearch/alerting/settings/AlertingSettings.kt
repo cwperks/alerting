@@ -32,6 +32,13 @@ class AlertingSettings {
         const val DEFAULT_FAN_OUT_NODES = 1000
         const val DEFAULT_MAX_TRIGGERS_PER_MONITOR = 10
 
+        val CLUSTER_STANDBY_MODE = Setting.boolSetting(
+            "cluster.standby_mode",
+            false,
+            Setting.Property.NodeScope,
+            Setting.Property.Dynamic
+        )
+
         val ALERTING_MAX_MONITORS = Setting.intSetting(
             "plugins.alerting.monitor.max_monitors",
             LegacyOpenDistroAlertingSettings.ALERTING_MAX_MONITORS,

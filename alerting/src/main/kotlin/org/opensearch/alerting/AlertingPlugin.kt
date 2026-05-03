@@ -5,7 +5,9 @@
 
 package org.opensearch.alerting
 
+import org.apache.logging.log4j.LogManager
 import org.opensearch.action.ActionRequest
+import org.opensearch.action.support.ActionFilter
 import org.opensearch.alerting.action.ExecuteMonitorAction
 import org.opensearch.alerting.action.ExecuteWorkflowAction
 import org.opensearch.alerting.action.GetDestinationsAction
@@ -66,6 +68,7 @@ import org.opensearch.alerting.settings.DestinationSettings
 import org.opensearch.alerting.settings.LegacyOpenDistroAlertingSettings
 import org.opensearch.alerting.settings.LegacyOpenDistroDestinationSettings
 import org.opensearch.alerting.spi.RemoteMonitorRunnerExtension
+import org.opensearch.alerting.standby.StandbyModeActionFilter
 import org.opensearch.alerting.transport.TransportAcknowledgeAlertAction
 import org.opensearch.alerting.transport.TransportAcknowledgeChainedAlertAction
 import org.opensearch.alerting.transport.TransportDeleteAlertingCommentAction
@@ -152,6 +155,7 @@ import org.opensearch.script.ScriptService
 import org.opensearch.threadpool.ThreadPool
 import org.opensearch.transport.client.Client
 import org.opensearch.watcher.ResourceWatcherService
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.Supplier
 
 /**
@@ -162,6 +166,7 @@ import java.util.function.Supplier
  */
 internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, ReloadablePlugin,
     SearchPlugin, SystemIndexPlugin, PercolatorPluginExt() {
+    private val logger = LogManager.getLogger(javaClass)
 
     override fun getContextAllowlists(): Map<ScriptContext<*>, List<Allowlist>> {
         val whitelist = AllowlistLoader.loadFromResourceFiles(javaClass, "org.opensearch.alerting.txt")
@@ -198,6 +203,8 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
     lateinit var alertIndices: AlertIndices
     lateinit var clusterService: ClusterService
     lateinit var destinationMigrationCoordinator: DestinationMigrationCoordinator
+    private val standbyModeEnabled = AtomicBoolean(false)
+    private val standbyModeActionFilter = StandbyModeActionFilter(standbyModeEnabled::get)
     var monitorTypeToMonitorRunners: MutableMap<String, RemoteMonitorRegistry> = mutableMapOf()
 
     override fun getRestHandlers(
@@ -299,8 +306,25 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
     ): Collection<Any> {
         // Need to figure out how to use the OpenSearch DI classes rather than handwiring things here.
         val settings = environment.settings()
+        standbyModeEnabled.set(AlertingSettings.CLUSTER_STANDBY_MODE.get(settings))
+        clusterService.clusterSettings.addSettingsUpdateConsumer(AlertingSettings.CLUSTER_STANDBY_MODE) { standbyMode ->
+            standbyModeEnabled.set(standbyMode)
+            if (standbyMode) {
+                logger.debug("Alerting standby mode enabled, descheduling local monitor and workflow jobs.")
+                if (this::scheduler.isInitialized) scheduler.deschedule(scheduler.scheduledJobs())
+                if (this::alertIndices.isInitialized) alertIndices.offClusterManager()
+                if (this::commentsIndices.isInitialized) commentsIndices.offManager()
+            } else {
+                logger.debug("Alerting standby mode disabled, reinitializing job sweeper.")
+                if (this::sweeper.isInitialized) sweeper.enable()
+                if (clusterService.state().nodes.isLocalNodeElectedClusterManager) {
+                    if (this::alertIndices.isInitialized) alertIndices.onClusterManager()
+                    if (this::commentsIndices.isInitialized) commentsIndices.onManager()
+                }
+            }
+        }
         val lockService = LockService(client, clusterService)
-        alertIndices = AlertIndices(settings, client, threadPool, clusterService)
+        alertIndices = AlertIndices(settings, client, threadPool, clusterService, standbyModeEnabled::get)
 
         val sdkClient: SdkClient = SdkClientFactory.createSdkClient(
             client,
@@ -347,10 +371,19 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
             .registerDestinationSettings()
             .registerRemoteMonitors(monitorTypeToMonitorRunners)
         scheduledJobIndices = ScheduledJobIndices(client.admin(), clusterService)
-        commentsIndices = CommentsIndices(environment.settings(), client, threadPool, clusterService)
+        commentsIndices = CommentsIndices(environment.settings(), client, threadPool, clusterService, standbyModeEnabled::get)
         docLevelMonitorQueries = DocLevelMonitorQueries(client, clusterService)
-        scheduler = JobScheduler(threadPool, runner)
-        sweeper = JobSweeper(environment.settings(), client, clusterService, threadPool, xContentRegistry, scheduler, ALERTING_JOB_TYPES)
+        scheduler = JobScheduler(threadPool, runner, standbyModeEnabled::get)
+        sweeper = JobSweeper(
+            environment.settings(),
+            client,
+            clusterService,
+            threadPool,
+            xContentRegistry,
+            scheduler,
+            ALERTING_JOB_TYPES,
+            standbyModeEnabled::get
+        )
         destinationMigrationCoordinator = DestinationMigrationCoordinator(client, clusterService, threadPool, scheduledJobIndices)
         this.threadPool = threadPool
         this.clusterService = clusterService
@@ -382,7 +415,8 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
             AlertingSettings.JOB_QUEUE_NAME.get(settings) ?: "",
             AlertingSettings.TARGET_TYPE_TO_SERVICE_NAME.get(settings).let {
                 it.keySet().associateWith { key -> it.get(key) }
-            }
+            },
+            standbyModeEnabled::get
         )
 
         ExternalSchedulerService.initialize(settings)
@@ -440,6 +474,7 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
             AlertingSettings.REQUEST_TIMEOUT,
             AlertingSettings.MAX_ACTION_THROTTLE_VALUE,
             AlertingSettings.FILTER_BY_BACKEND_ROLES,
+            AlertingSettings.CLUSTER_STANDBY_MODE,
             AlertingSettings.MAX_ACTIONABLE_ALERT_COUNT,
             LegacyOpenDistroAlertingSettings.INPUT_TIMEOUT,
             LegacyOpenDistroAlertingSettings.INDEX_TIMEOUT,
@@ -504,6 +539,10 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
         if (indexModule.index.name == ScheduledJob.SCHEDULED_JOBS_INDEX) {
             indexModule.addIndexOperationListener(sweeper)
         }
+    }
+
+    override fun getActionFilters(): List<ActionFilter> {
+        return listOf(standbyModeActionFilter)
     }
 
     override fun getContexts(): List<ScriptContext<*>> {

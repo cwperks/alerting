@@ -51,6 +51,7 @@ import org.opensearch.transport.client.Client
 import java.util.TreeMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.function.Supplier
 
 typealias JobId = String
 typealias JobVersion = Long
@@ -76,7 +77,8 @@ class JobSweeper(
     private val threadPool: ThreadPool,
     private val xContentRegistry: NamedXContentRegistry,
     private val scheduler: JobScheduler,
-    private val sweepableJobTypes: List<String>
+    private val sweepableJobTypes: List<String>,
+    private val standbyModeEnabled: Supplier<Boolean> = Supplier { false }
 ) : ClusterStateListener, IndexingOperationListener, LifecycleListener() {
     private val logger = LogManager.getLogger(javaClass)
 
@@ -221,7 +223,7 @@ class JobSweeper(
     public fun isSweepingEnabled(): Boolean {
         // Although it is a single link check, keeping it as a separate function, so we
         // can abstract out logic of finding out whether to proceed or not
-        return sweeperEnabled == true
+        return sweeperEnabled == true && !standbyModeEnabled.get()
     }
 
     private fun initBackgroundSweep() {
@@ -241,6 +243,8 @@ class JobSweeper(
 
         // Setup an anti-entropy/self-healing background sweep, in case a sweep that was triggered by an event fails.
         val scheduledSweep = Runnable {
+            if (!isSweepingEnabled()) return@Runnable
+
             val elapsedTime = getFullSweepElapsedTime()
 
             // Rate limit to at most one full sweep per sweep period
@@ -258,6 +262,8 @@ class JobSweeper(
     }
 
     private fun sweepAllShards() {
+        if (!isSweepingEnabled()) return
+
         val clusterState = clusterService.state()
         if (!clusterState.routingTable.hasIndex(ScheduledJob.SCHEDULED_JOBS_INDEX)) {
             scheduler.deschedule(scheduler.scheduledJobs())

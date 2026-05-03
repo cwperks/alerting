@@ -114,6 +114,23 @@ class MonitorRestApiIT : AlertingRestTestCase() {
         assertEquals("Incorrect Location header", "$ALERTING_BASE_URI/$createdId", createResponse.getHeader("Location"))
     }
 
+    fun `test standby mode rejects monitor writes`() {
+        try {
+            client().updateSettings(AlertingSettings.CLUSTER_STANDBY_MODE.key, true)
+
+            val standbyException = expectThrows(ResponseException::class.java) {
+                client().makeRequest("POST", ALERTING_BASE_URI, emptyMap(), randomQueryLevelMonitor().toHttpEntity())
+            }
+            assertEquals(RestStatus.FORBIDDEN, standbyException.response.restStatus())
+
+            client().updateSettings(AlertingSettings.CLUSTER_STANDBY_MODE.key, false)
+            val createResponse = client().makeRequest("POST", ALERTING_BASE_URI, emptyMap(), randomQueryLevelMonitor().toHttpEntity())
+            assertEquals(RestStatus.CREATED, createResponse.restStatus())
+        } finally {
+            client().updateSettings(AlertingSettings.CLUSTER_STANDBY_MODE.key, false)
+        }
+    }
+
     @Throws(Exception::class)
     fun `test creating a bucket monitor`() {
         val monitor = randomBucketLevelMonitor()

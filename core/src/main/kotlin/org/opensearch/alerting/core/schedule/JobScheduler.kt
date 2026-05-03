@@ -15,6 +15,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.function.Supplier
 import java.util.stream.Collectors
 
 /**
@@ -22,7 +23,11 @@ import java.util.stream.Collectors
  *
  * JobScheduler is unaware of the ScheduledJob version and it is up to callers to ensure that the older version of ScheduledJob to be descheduled and schedule the new version.
  */
-class JobScheduler(private val threadPool: ThreadPool, private val jobRunner: JobRunner) {
+class JobScheduler(
+    private val threadPool: ThreadPool,
+    private val jobRunner: JobRunner,
+    private val standbyModeEnabled: Supplier<Boolean> = Supplier { false }
+) {
     private val logger = LogManager.getLogger(JobScheduler::class.java)
 
     /**
@@ -62,6 +67,11 @@ class JobScheduler(private val threadPool: ThreadPool, private val jobRunner: Jo
      */
     fun schedule(scheduledJob: ScheduledJob): Boolean {
         logger.info("Scheduling jobId : ${scheduledJob.id}, name: ${scheduledJob.name}")
+
+        if (standbyModeEnabled.get()) {
+            logger.debug("Alerting standby mode is enabled, skipping scheduling jobId: ${scheduledJob.id}.")
+            return false
+        }
 
         if (!scheduledJob.enabled) {
             // ensure that the ScheduledJob is not enabled. The caller should be also checking this before calling this function.
@@ -162,6 +172,12 @@ class JobScheduler(private val threadPool: ThreadPool, private val jobRunner: Jo
 
         // Create anonymous runnable.
         val runnable = Runnable {
+            if (standbyModeEnabled.get()) {
+                logger.debug("Alerting standby mode is enabled, skipping scheduled jobId: ${scheduleJob.id}.")
+                scheduledJobInfo.scheduledCancellable = null
+                return@Runnable
+            }
+
             // Check again if the scheduled job is marked descheduled.
             if (scheduledJobInfo.descheduled) {
                 return@Runnable // skip running job if job is marked descheduled.

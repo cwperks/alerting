@@ -65,6 +65,7 @@ import org.opensearch.threadpool.Scheduler.Cancellable
 import org.opensearch.threadpool.ThreadPool
 import org.opensearch.transport.client.Client
 import java.time.Instant
+import java.util.function.Supplier
 
 private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
@@ -83,7 +84,8 @@ class AlertIndices(
     settings: Settings,
     private val client: Client,
     private val threadPool: ThreadPool,
-    private val clusterService: ClusterService
+    private val clusterService: ClusterService,
+    private val standbyModeEnabled: Supplier<Boolean> = Supplier { false }
 ) : ClusterStateListener {
 
     init {
@@ -190,6 +192,11 @@ class AlertIndices(
     private var scheduledFindingRollover: Cancellable? = null
 
     fun onClusterManager() {
+        if (standbyModeEnabled.get()) {
+            logger.debug("Alerting standby mode is enabled, skipping alert/finding history rollover scheduling.")
+            return
+        }
+
         try {
             // try to rollover immediately as we might be restarting the cluster
             rolloverAlertHistoryIndex()
@@ -238,7 +245,7 @@ class AlertIndices(
     }
 
     private fun rescheduleAlertRollover() {
-        if (clusterService.state().nodes.isLocalNodeElectedClusterManager) {
+        if (clusterService.state().nodes.isLocalNodeElectedClusterManager && !standbyModeEnabled.get()) {
             scheduledAlertRollover?.cancel()
             scheduledAlertRollover = threadPool
                 .scheduleWithFixedDelay({ rolloverAndDeleteAlertHistoryIndices() }, alertHistoryRolloverPeriod, executorName())
@@ -246,7 +253,7 @@ class AlertIndices(
     }
 
     private fun rescheduleFindingRollover() {
-        if (clusterService.state().nodes.isLocalNodeElectedClusterManager) {
+        if (clusterService.state().nodes.isLocalNodeElectedClusterManager && !standbyModeEnabled.get()) {
             scheduledFindingRollover?.cancel()
             scheduledFindingRollover = threadPool
                 .scheduleWithFixedDelay({ rolloverAndDeleteFindingHistoryIndices() }, findingHistoryRolloverPeriod, executorName())
@@ -428,11 +435,15 @@ class AlertIndices(
     }
 
     private fun rolloverAndDeleteAlertHistoryIndices() {
+        if (standbyModeEnabled.get()) return
+
         if (alertHistoryEnabled) rolloverAlertHistoryIndex()
         deleteOldIndices("History", ALERT_HISTORY_ALL)
     }
 
     private fun rolloverAndDeleteFindingHistoryIndices() {
+        if (standbyModeEnabled.get()) return
+
         if (findingHistoryEnabled) rolloverFindingHistoryIndex()
         deleteOldIndices("Finding", FINDING_HISTORY_ALL)
     }

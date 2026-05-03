@@ -37,6 +37,7 @@ import org.opensearch.threadpool.Scheduler
 import org.opensearch.threadpool.ThreadPool
 import org.opensearch.transport.client.Client
 import java.time.Instant
+import java.util.function.Supplier
 
 /**
  * Initialize the OpenSearch components required to run comments.
@@ -46,7 +47,8 @@ class CommentsIndices(
     settings: Settings,
     private val client: Client,
     private val threadPool: ThreadPool,
-    private val clusterService: ClusterService
+    private val clusterService: ClusterService,
+    private val standbyModeEnabled: Supplier<Boolean> = Supplier { false }
 ) : ClusterStateListener {
 
     init {
@@ -108,6 +110,11 @@ class CommentsIndices(
      */
 
     fun onManager() {
+        if (standbyModeEnabled.get()) {
+            logger.debug("Alerting standby mode is enabled, skipping comments history rollover scheduling.")
+            return
+        }
+
         try {
             // try to rollover immediately as we might be restarting the cluster
             rolloverCommentsHistoryIndex()
@@ -149,7 +156,7 @@ class CommentsIndices(
     }
 
     private fun rescheduleCommentsRollover() {
-        if (clusterService.state().nodes.isLocalNodeElectedClusterManager) {
+        if (clusterService.state().nodes.isLocalNodeElectedClusterManager && !standbyModeEnabled.get()) {
             scheduledCommentsRollover?.cancel()
             scheduledCommentsRollover = threadPool
                 .scheduleWithFixedDelay({ rolloverAndDeleteCommentsHistoryIndices() }, commentsHistoryRolloverPeriod, executorName())
@@ -175,6 +182,8 @@ class CommentsIndices(
     }
 
     private fun rolloverAndDeleteCommentsHistoryIndices() {
+        if (standbyModeEnabled.get()) return
+
         rolloverCommentsHistoryIndex()
         deleteOldIndices("comments", COMMENTS_HISTORY_ALL)
     }

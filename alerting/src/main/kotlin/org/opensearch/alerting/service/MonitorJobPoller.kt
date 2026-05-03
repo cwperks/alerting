@@ -34,6 +34,7 @@ import software.amazon.awssdk.services.sqs.model.Message
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.function.Supplier
 
 /**
  * Polls SQS queues for monitor execution messages and dispatches them
@@ -51,7 +52,8 @@ class MonitorJobPoller(
     private val accountIdProvider: JobQueueAccountIdProvider?,
     private val region: String,
     private val queueName: String,
-    private val targetTypeToServiceName: Map<String, String>
+    private val targetTypeToServiceName: Map<String, String>,
+    private val standbyModeEnabled: Supplier<Boolean> = Supplier { false }
 ) : AbstractLifecycleComponent() {
 
     private val logger = LogManager.getLogger(MonitorJobPoller::class.java)
@@ -62,7 +64,7 @@ class MonitorJobPoller(
     var sqsClient: SqsClient? = null
 
     override fun doStart() {
-        if (!enabled) {
+        if (!enabled || standbyModeEnabled.get()) {
             logger.info("MonitorJobPoller disabled, not starting poll workers")
             return
         }
@@ -97,6 +99,11 @@ class MonitorJobPoller(
         var cachedAccountIds: List<String> = emptyList()
 
         while (scope.isActive) {
+            if (standbyModeEnabled.get()) {
+                delay(POLL_INTERVAL_MS)
+                continue
+            }
+
             try {
                 val accountIds = provider.getAccountIds()
                 if (accountIds.isEmpty()) continue
