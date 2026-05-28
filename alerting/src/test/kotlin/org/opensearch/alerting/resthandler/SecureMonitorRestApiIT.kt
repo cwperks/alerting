@@ -243,6 +243,7 @@ class SecureMonitorRestApiIT : AlertingRestTestCase() {
     }
 
     fun `test create monitor with an user without index read role`() {
+        if (!indexExists(TEST_NON_HR_INDEX)) createTestIndex(TEST_NON_HR_INDEX)
 
         createUserWithTestDataAndCustomRole(
             user,
@@ -266,6 +267,7 @@ class SecureMonitorRestApiIT : AlertingRestTestCase() {
             assertEquals("Unexpected status", RestStatus.FORBIDDEN, e.response.restStatus())
         } finally {
             deleteRoleAndRoleMapping(TEST_HR_ROLE)
+            if (indexExists(TEST_NON_HR_INDEX)) deleteIndex(TEST_NON_HR_INDEX)
         }
     }
 
@@ -1318,6 +1320,7 @@ class SecureMonitorRestApiIT : AlertingRestTestCase() {
     // Execute Monitor related security tests
 
     fun `test execute monitor with elevate permissions`() {
+        if (!indexExists(TEST_NON_HR_INDEX)) createTestIndex(TEST_NON_HR_INDEX)
 
         val action = randomAction(template = randomTemplateScript("Hello {{ctx.monitor.name}}"), destinationId = createDestination().id)
         val inputs = listOf(
@@ -1344,6 +1347,7 @@ class SecureMonitorRestApiIT : AlertingRestTestCase() {
             assertTrue((inputResults.get("error") as String).contains("no permissions for [indices:data/read/search]"))
         } finally {
             deleteRoleMapping(ALERTING_FULL_ACCESS_ROLE)
+            if (indexExists(TEST_NON_HR_INDEX)) deleteIndex(TEST_NON_HR_INDEX)
         }
     }
 
