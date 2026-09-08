@@ -5,8 +5,11 @@
 package org.opensearch.alerting.resthandler
 
 import org.apache.logging.log4j.LogManager
+import org.opensearch.action.ActionType
 import org.opensearch.action.support.WriteRequest
 import org.opensearch.alerting.AlertingPlugin
+import org.opensearch.alerting.ResourceSharingUtils
+import org.opensearch.alerting.action.UpdateMonitorAction
 import org.opensearch.alerting.alerts.AlertIndices
 import org.opensearch.alerting.util.IF_PRIMARY_TERM
 import org.opensearch.alerting.util.IF_SEQ_NO
@@ -46,6 +49,15 @@ import java.time.Instant
 import java.util.Locale
 
 private val log = LogManager.getLogger(RestIndexMonitorAction::class.java)
+
+internal fun monitorWriteAction(
+    method: RestRequest.Method,
+    useResourceAuthz: Boolean
+): ActionType<IndexMonitorResponse> = if (method == PUT && useResourceAuthz) {
+    UpdateMonitorAction.INSTANCE
+} else {
+    AlertingActions.INDEX_MONITOR_ACTION_TYPE
+}
 
 /**
  * Rest handlers to create and update monitors.
@@ -159,7 +171,11 @@ class RestIndexMonitorAction : BaseRestHandler() {
         val indexMonitorRequest = IndexMonitorRequest(id, seqNo, primaryTerm, refreshPolicy, request.method(), monitor, rbacRoles)
 
         return RestChannelConsumer { channel ->
-            client.execute(AlertingActions.INDEX_MONITOR_ACTION_TYPE, indexMonitorRequest, indexMonitorResponse(channel, request.method()))
+            val action = monitorWriteAction(
+                request.method(),
+                ResourceSharingUtils.shouldUseResourceAuthz(ResourceSharingUtils.MONITOR_RESOURCE_TYPE)
+            )
+            client.execute(action, indexMonitorRequest, indexMonitorResponse(channel, request.method()))
         }
     }
 
