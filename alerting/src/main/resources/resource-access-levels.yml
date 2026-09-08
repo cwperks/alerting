@@ -15,6 +15,7 @@ resource_types:
     alerting_read_write:
       allowed_actions:
         - 'cluster:admin/opendistro/alerting/monitor/*'
+        - 'alerting:monitor/update'
         - 'cluster:admin/opensearch/alerting/workflow/*'
         - 'cluster:admin/opendistro/alerting/alerts/*'
         - 'cluster:admin/opensearch/alerting/workflow_alerts/*'
@@ -25,6 +26,7 @@ resource_types:
     alerting_full_access:
       allowed_actions:
         - 'cluster:admin/opendistro/alerting/monitor/*'
+        - 'alerting:monitor/update'
         - 'cluster:admin/opensearch/alerting/workflow/*'
         - 'cluster:admin/opendistro/alerting/alerts/*'
         - 'cluster:admin/opensearch/alerting/workflow_alerts/*'

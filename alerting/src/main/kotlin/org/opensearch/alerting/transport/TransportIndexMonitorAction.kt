@@ -33,6 +33,7 @@ import org.opensearch.alerting.PPLUtils.appendDataRowsLimit
 import org.opensearch.alerting.PPLUtils.customConditionIsValid
 import org.opensearch.alerting.PPLUtils.executePplQuery
 import org.opensearch.alerting.ResourceSharingUtils
+import org.opensearch.alerting.action.UpdateMonitorAction
 import org.opensearch.alerting.core.ScheduledJobIndices
 import org.opensearch.alerting.opensearchapi.suspendUntil
 import org.opensearch.alerting.service.DeleteMonitorService
@@ -71,7 +72,6 @@ import org.opensearch.common.xcontent.LoggingDeprecationHandler
 import org.opensearch.common.xcontent.XContentFactory
 import org.opensearch.common.xcontent.XContentHelper
 import org.opensearch.common.xcontent.XContentType
-import org.opensearch.commons.alerting.action.AlertingActions
 import org.opensearch.commons.alerting.action.IndexMonitorRequest
 import org.opensearch.commons.alerting.action.IndexMonitorResponse
 import org.opensearch.commons.alerting.model.DocLevelMonitorInput
@@ -133,7 +133,7 @@ class TransportIndexMonitorAction @Inject constructor(
     val namedWriteableRegistry: NamedWriteableRegistry,
     val sdkClient: SdkClient,
 ) : HandledTransportAction<ActionRequest, IndexMonitorResponse>(
-    AlertingActions.INDEX_MONITOR_ACTION_NAME, transportService, actionFilters, ::IndexMonitorRequest
+    UpdateMonitorAction.INSTANCE, transportService, actionFilters, ::IndexMonitorRequest
 ),
     SecureTransportAction {
 
