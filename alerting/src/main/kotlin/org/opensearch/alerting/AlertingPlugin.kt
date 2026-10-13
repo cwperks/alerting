@@ -14,6 +14,7 @@ import org.opensearch.alerting.action.GetEmailGroupAction
 import org.opensearch.alerting.action.GetRemoteIndexesAction
 import org.opensearch.alerting.action.SearchEmailAccountAction
 import org.opensearch.alerting.action.SearchEmailGroupAction
+import org.opensearch.alerting.action.UpdateMonitorAction
 import org.opensearch.alerting.alerts.AlertIndices
 import org.opensearch.alerting.alerts.AlertIndices.Companion.ALL_ALERT_INDEX_PATTERN
 import org.opensearch.alerting.comments.CommentsIndices
@@ -250,7 +251,7 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
     override fun getActions(): List<ActionPlugin.ActionHandler<out ActionRequest, out ActionResponse>> {
         return listOf(
             ActionPlugin.ActionHandler(ScheduledJobsStatsAction.INSTANCE, ScheduledJobsStatsTransportAction::class.java),
-            ActionPlugin.ActionHandler(AlertingActions.INDEX_MONITOR_ACTION_TYPE, TransportIndexMonitorAction::class.java),
+            ActionPlugin.ActionHandler(UpdateMonitorAction.INSTANCE, TransportIndexMonitorAction::class.java),
             ActionPlugin.ActionHandler(AlertingActions.GET_MONITOR_ACTION_TYPE, TransportGetMonitorAction::class.java),
             ActionPlugin.ActionHandler(ExecuteMonitorAction.INSTANCE, TransportExecuteMonitorAction::class.java),
             ActionPlugin.ActionHandler(AlertingActions.SEARCH_MONITORS_ACTION_TYPE, TransportSearchMonitorAction::class.java),
