@@ -23,7 +23,11 @@ class MustacheTemplateServiceTests : OpenSearchTestCase() {
             settings,
             mapOf(
                 "mustache" to MustacheScriptEngine(),
-                "painless" to MockScriptEngine("painless", mapOf("script" to Function { _: Map<String, Any> -> "painless result" }), emptyMap())
+                "painless" to MockScriptEngine(
+                    "painless",
+                    mapOf("script" to Function { _: Map<String, Any> -> "painless result" }),
+                    emptyMap()
+                )
             ),
             mapOf<String, ScriptContext<*>>(TemplateScript.CONTEXT.name to TemplateScript.CONTEXT)
         ) {
