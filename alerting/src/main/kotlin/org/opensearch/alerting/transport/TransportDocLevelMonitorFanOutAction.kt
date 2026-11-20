@@ -1421,7 +1421,7 @@ class TransportDocLevelMonitorFanOutAction
         return DestinationContextFactory(client, xContentRegistry, destinationSettings)
     }
 
-    private val mustacheTemplateService = MustacheTemplateService(scriptService, settings)
+    private val mustacheTemplateService = MustacheTemplateService(scriptService)
 
     private fun compileTemplate(template: Script, ctx: TriggerExecutionContext): String {
         return mustacheTemplateService.renderScript(template, mapOf("ctx" to ctx.asTemplateArg()))

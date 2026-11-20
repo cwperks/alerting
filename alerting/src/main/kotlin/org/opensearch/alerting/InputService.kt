@@ -77,7 +77,7 @@ class InputService(
 ) {
 
     private val logger = LogManager.getLogger(InputService::class.java)
-    private val mustacheTemplateService = MustacheTemplateService(scriptService, settings)
+    private val mustacheTemplateService = MustacheTemplateService(scriptService)
 
     suspend fun collectInputResults(
         monitor: Monitor,
