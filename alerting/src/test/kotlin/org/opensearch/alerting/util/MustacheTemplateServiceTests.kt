@@ -5,6 +5,8 @@
 
 package org.opensearch.alerting.util
 
+import com.github.mustachejava.MustacheException
+import org.hamcrest.Matchers.containsString
 import org.mockito.Mockito
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
@@ -14,6 +16,7 @@ import org.opensearch.script.ScriptService
 import org.opensearch.script.ScriptType
 import org.opensearch.script.TemplateScript
 import org.opensearch.test.OpenSearchTestCase
+import java.nio.file.Files
 import org.mockito.Mockito.`when` as whenever
 
 class MustacheTemplateServiceTests : OpenSearchTestCase() {
@@ -33,6 +36,33 @@ class MustacheTemplateServiceTests : OpenSearchTestCase() {
             .put("plugins.alerting.multi_tenancy_enabled", multiTenancyEnabled)
             .build()
         return Pair(MustacheTemplateService(scriptService, settings), scriptService)
+    }
+
+    fun `test renderTemplate rejects partial templates`() {
+        val service = createService(multiTenancyEnabled = true)
+        for (partial in partialNames()) {
+            val error = expectThrows(MustacheException::class.java) {
+                service.renderTemplate("{{>$partial}}", emptyMap())
+            }
+            assertThat(error.message, containsString("Partial templates are not supported"))
+        }
+    }
+
+    fun `test renderScript rejects partial templates`() {
+        val service = createService(multiTenancyEnabled = true)
+        for (partial in partialNames()) {
+            val script = Script(ScriptType.INLINE, Script.DEFAULT_TEMPLATE_LANG, "{{>$partial}}", emptyMap())
+            val error = expectThrows(MustacheException::class.java) {
+                service.renderScript(script, emptyMap())
+            }
+            assertThat(error.message, containsString("Partial templates are not supported"))
+        }
+    }
+
+    private fun partialNames(): List<String> {
+        val marker = createTempFile("mustache-partial", ".txt")
+        Files.writeString(marker, "test marker")
+        return listOf(marker.toUri().toString(), "../partial", "partial")
     }
 
     // --- renderTemplate tests (multi-tenancy enabled = direct mustache) ---
