@@ -361,7 +361,7 @@ internal class AlertingPlugin : PainlessExtension, ActionPlugin, ScriptPlugin, R
             )
             .registerTriggerService(triggerService)
             .registerAlertService(alertService)
-            .registerMustacheTemplateService(MustacheTemplateService(scriptService, settings))
+            .registerMustacheTemplateService(MustacheTemplateService(scriptService))
             .registerDocLevelMonitorQueries(DocLevelMonitorQueries(client, clusterService))
             .registerJvmStats(JvmStats.jvmStats())
             .registerWorkflowService(WorkflowService(client, xContentRegistry))
