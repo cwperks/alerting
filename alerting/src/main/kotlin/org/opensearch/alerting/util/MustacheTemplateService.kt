@@ -6,12 +6,14 @@
 package org.opensearch.alerting.util
 
 import com.github.mustachejava.DefaultMustacheFactory
+import com.github.mustachejava.MustacheException
 import org.opensearch.alerting.settings.AlertingSettings
 import org.opensearch.common.settings.Settings
 import org.opensearch.script.Script
 import org.opensearch.script.ScriptService
 import org.opensearch.script.ScriptType
 import org.opensearch.script.TemplateScript
+import java.io.Reader
 import java.io.StringReader
 import java.io.StringWriter
 
@@ -27,7 +29,12 @@ class MustacheTemplateService(
     settings: Settings
 ) {
     private val multiTenancyEnabled = AlertingSettings.MULTI_TENANCY_ENABLED.get(settings)
-    private val mustacheFactory = DefaultMustacheFactory()
+    private val mustacheFactory = object : DefaultMustacheFactory() {
+        // Alerting templates are self-contained; never resolve external partial templates.
+        override fun getReader(resourceName: String): Reader {
+            throw MustacheException("Partial templates are not supported in Alerting Mustache templates")
+        }
+    }
 
     /**
      * Compiles and renders an inline mustache template with the given parameters.
